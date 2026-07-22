@@ -1,0 +1,13 @@
+[Unit]
+Description=nearbynoise web UI
+After=network.target
+
+[Service]
+User=www-data
+WorkingDirectory=/opt/nearbynoise
+ExecStart=/opt/nearbynoise/.venv/bin/python -c "from waitress import serve; from nearbynoise.webserver import create_app; serve(create_app('/var/www/laermprotokoll', '/var/www/laermprotokoll/events.jsonl'), host='127.0.0.1', port=8080)"
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
