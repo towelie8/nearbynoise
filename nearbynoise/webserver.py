@@ -8,6 +8,18 @@ from flask import Flask, abort, render_template_string, send_from_directory
 
 DISPLAY_TZ = ZoneInfo("Europe/Berlin")
 
+# Severity thresholds for highlighting loud events (relative dBFS)
+PEAK_HIGH_DBFS = -20.0
+PEAK_MID_DBFS = -35.0
+
+
+def _severity(peak_dbfs):
+    if peak_dbfs >= PEAK_HIGH_DBFS:
+        return "peak-high"
+    if peak_dbfs >= PEAK_MID_DBFS:
+        return "peak-mid"
+    return "peak-low"
+
 PAGE = """<!doctype html>
 <html lang="de"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -17,12 +29,14 @@ PAGE = """<!doctype html>
  table{border-collapse:collapse;width:100%}
  td,th{padding:.5rem;border-bottom:1px solid #ccc;text-align:left}
  audio{width:14rem;max-width:60vw}
+ .peak-high{color:#b00020;font-weight:bold}
+ .peak-mid{color:#b36b00}
 </style></head><body>
 <h1>Laermprotokoll</h1>
 <table><tr><th>Datum</th><th>Uhrzeit</th><th>Dauer</th><th>Pegel</th><th>Anhoeren</th></tr>
 {% for e in events %}
 <tr><td>{{ e.date }}</td><td>{{ e.time }}</td><td>{{ e.duration }} s</td>
-<td>{{ e.peak }} dB</td>
+<td class="{{ e.severity }}">{{ e.peak }} dB</td>
 <td>{% if e.path %}<audio controls preload="none" src="/audio/{{ e.path }}"></audio>
 {% else %}Aufnahme fehlgeschlagen{% endif %}</td></tr>
 {% endfor %}
@@ -47,6 +61,7 @@ def _load_events(log_path):
             "time": f"{start:%H:%M:%S}",
             "duration": entry["duration_sec"],
             "peak": entry["peak_dbfs"],
+            "severity": _severity(entry["peak_dbfs"]),
             "path": path,
         })
     return sorted(events, key=lambda e: e["sort"], reverse=True)
