@@ -23,6 +23,7 @@ def client(tmp_path):
 def test_index_lists_events_newest_first(client):
     html = client.get("/").get_data(as_text=True)
     assert "22.07.2026" in html
+    assert "22:15:30" in html      # 20:15:30 UTC shown as Europe/Berlin local time
     assert "14.2" in html or "14,2" in html
     assert html.index("20260722T201530") < html.index("20260721T100000")
     assert "/audio/2026/07/22/20260722T201530.mp3" in html
