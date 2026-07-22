@@ -1,0 +1,13 @@
+[Unit]
+Description=nearbynoise noise monitor (recorder)
+After=sound.target network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/nearbynoise
+ExecStart=/home/pi/nearbynoise/.venv/bin/python -m nearbynoise.main
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
