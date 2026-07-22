@@ -39,6 +39,18 @@ def test_audio_route_404_for_missing_file(client):
     assert client.get("/audio/2026/07/22/nope.mp3").status_code == 404
 
 
+def test_peak_levels_get_severity_classes(client, tmp_path):
+    log = tmp_path / "events.jsonl"
+    quiet = dict(ENTRY, peak_dbfs=-50.0)
+    medium = dict(ENTRY, peak_dbfs=-30.0)
+    loud = dict(ENTRY, peak_dbfs=-15.0)
+    log.write_text("\n".join(json.dumps(e) for e in (quiet, medium, loud)) + "\n")
+    html = client.get("/").get_data(as_text=True)
+    assert html.count('class="peak-high"') == 1     # -15 dB: extreme
+    assert html.count('class="peak-mid"') == 1      # -30 dB: elevated
+    assert html.count('class="peak-low"') == 1      # -50 dB: normal
+
+
 def test_error_events_shown_without_player(client, tmp_path):
     log = tmp_path / "events.jsonl"
     broken = dict(ENTRY, filename=None)
