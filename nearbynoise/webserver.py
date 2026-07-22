@@ -2,7 +2,11 @@
 import json
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
 from flask import Flask, abort, render_template_string, send_from_directory
+
+DISPLAY_TZ = ZoneInfo("Europe/Berlin")
 
 PAGE = """<!doctype html>
 <html lang="de"><head><meta charset="utf-8">
@@ -34,7 +38,9 @@ def _load_events(log_path):
         start = datetime.fromisoformat(entry["timestamp_start"])
         path = None
         if entry.get("filename"):
+            # file paths stay in UTC (matches filename and date tree)
             path = f"{start:%Y/%m/%d}/{entry['filename']}"
+        start = start.astimezone(DISPLAY_TZ)
         events.append({
             "sort": entry["timestamp_start"],
             "date": f"{start:%d.%m.%Y}",
