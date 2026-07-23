@@ -1,7 +1,9 @@
 """Central configuration. Tune TRIGGER_DBFS on site, then: systemctl restart nearbynoise-recorder."""
 
 # Audio
-SAMPLE_RATE = 44100          # Hz
+SAMPLE_RATE = 48000          # Hz (USB headsets like the SC60 accept 44100 but
+                             # do not honor it -> time-compressed clips; 48000 is
+                             # a native rate. See startup rate check in main.py.)
 CHANNELS = 1                 # mono
 BLOCK_SIZE = 1024            # samples per block (~23 ms)
 
