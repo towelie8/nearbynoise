@@ -4,10 +4,12 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from flask import Flask, abort, render_template_string, send_from_directory
+from flask import (Flask, abort, redirect, render_template_string, request,
+                   send_from_directory)
 
 from nearbynoise.charts import bar_chart_svg, hourly_counts, scatter_svg
 from nearbynoise.loudness import loudness as _loudness
+from nearbynoise.notes import load_notes, set_note
 
 DISPLAY_TZ = ZoneInfo("Europe/Berlin")
 
@@ -36,6 +38,8 @@ PAGE = """<!doctype html>
  .lvl-loud .word{color:#e07000}
  .lvl-extreme .word{color:#b00020;font-weight:bold}
  .dbfs{color:#888;font-size:.85em}
+ .note input[type=text]{width:11rem;max-width:40vw}
+ .note button{margin-left:.25rem}
 </style></head><body>
 <h1>Laermprotokoll</h1>
 <h2>Letzte 24 Stunden</h2>
@@ -47,12 +51,13 @@ PAGE = """<!doctype html>
 {% else %}
 <p class="empty">Keine Ereignisse in den letzten 24 Stunden</p>
 {% endif %}
-<table><tr><th>Datum</th><th>Uhrzeit</th><th>Dauer</th><th>Pegel</th><th>Anhoeren</th></tr>
+<table><tr><th>Datum</th><th>Uhrzeit</th><th>Dauer</th><th>Pegel</th><th>Anhoeren</th><th>Notiz</th></tr>
 {% for e in events %}
 <tr><td>{{ e.date }}</td><td>{{ e.time }}</td><td>{{ e.duration }} s</td>
 <td><span class="pegel {{ e.css }}"><span class="bar"><i style="width:{{ e.fill }}%"></i></span><span class="word">{{ e.label }}</span> <span class="dbfs">({{ e.peak }} dB)</span></span></td>
 <td>{% if e.path %}<audio controls preload="none" src="/audio/{{ e.path }}"></audio>
-{% else %}Aufnahme fehlgeschlagen{% endif %}</td></tr>
+{% else %}Aufnahme fehlgeschlagen{% endif %}</td>
+<td class="note"><form method="post" action="/note"><input type="hidden" name="event" value="{{ e.sort }}"><input type="text" name="note" value="{{ e.note }}" placeholder="Notiz..." maxlength="500"><button type="submit">Speichern</button></form></td></tr>
 {% endfor %}
 </table></body></html>"""
 
@@ -84,15 +89,19 @@ def _load_events(log_path):
     return sorted(events, key=lambda e: e["sort"], reverse=True)
 
 
-def create_app(events_dir, log_path, now=None):
+def create_app(events_dir, log_path, now=None, notes_path=None):
     events_dir = Path(events_dir)
     log_path = Path(log_path)
+    notes_path = Path(notes_path) if notes_path else events_dir / "notes.json"
     now_provider = now or (lambda: datetime.now(DISPLAY_TZ))
     app = Flask(__name__)
 
     @app.get("/")
     def index():
         events = _load_events(log_path)
+        notes = load_notes(notes_path)
+        for e in events:
+            e["note"] = notes.get(e["sort"], "")
         current = now_provider()
         points = [(datetime.fromisoformat(e["sort"]).astimezone(DISPLAY_TZ),
                    e["peak"]) for e in events]
@@ -102,6 +111,13 @@ def create_app(events_dir, log_path, now=None):
             bar_svg=bar_chart_svg(counts, current),
             scatter_svg=scatter_svg(points, current),
             has_recent=sum(counts) > 0)
+
+    @app.post("/note")
+    def save_note():
+        event = request.form.get("event", "")
+        if event:
+            set_note(notes_path, event, request.form.get("note", ""))
+        return redirect("/")
 
     @app.get("/audio/<yyyy>/<mm>/<dd>/<filename>")
     def audio(yyyy, mm, dd, filename):

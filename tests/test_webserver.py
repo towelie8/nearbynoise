@@ -110,6 +110,32 @@ def test_overview_empty_state_when_no_recent_events(tmp_path):
     assert "<circle" not in html
 
 
+def test_existing_note_is_prefilled(client, tmp_path):
+    (tmp_path / "notes.json").write_text(
+        json.dumps({ENTRY["timestamp_start"]: "Motorradfahrer X"}))
+    html = client.get("/").get_data(as_text=True)
+    assert "Motorradfahrer X" in html
+
+
+def test_post_note_saves_and_shows(client, tmp_path):
+    from nearbynoise.notes import load_notes
+    resp = client.post("/note", data={"event": ENTRY["timestamp_start"],
+                                       "note": "Motorradfahrer X"})
+    assert resp.status_code == 302
+    assert load_notes(tmp_path / "notes.json")[ENTRY["timestamp_start"]] \
+        == "Motorradfahrer X"
+    html = client.get("/").get_data(as_text=True)
+    assert "Motorradfahrer X" in html
+
+
+def test_note_text_is_html_escaped(client):
+    client.post("/note", data={"event": ENTRY["timestamp_start"],
+                               "note": "<script>alert(1)</script>"})
+    html = client.get("/").get_data(as_text=True)
+    assert "<script>alert(1)</script>" not in html
+    assert "&lt;script&gt;" in html
+
+
 def test_error_events_shown_without_player(client, tmp_path):
     log = tmp_path / "events.jsonl"
     broken = dict(ENTRY, filename=None)
