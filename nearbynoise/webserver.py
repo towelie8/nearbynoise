@@ -40,6 +40,18 @@ PAGE = """<!doctype html>
  .dbfs{color:#888;font-size:.85em}
  .note input[type=text]{width:11rem;max-width:40vw}
  .note button{margin-left:.25rem}
+ @media (max-width:40rem){
+  body{margin:.5rem}
+  thead{display:none}
+  table,tbody,tr,td{display:block;width:auto}
+  tr{border:1px solid #ccc;border-radius:.5rem;padding:.5rem;margin-bottom:.75rem}
+  td{border:none;padding:.3rem .1rem}
+  td::before{content:attr(data-label) ": ";font-weight:bold;color:#555}
+  audio{display:block;width:100%;max-width:none;margin-top:.25rem}
+  .note form{display:flex;flex-direction:column;align-items:stretch}
+  .note input[type=text]{width:100%;max-width:none;box-sizing:border-box;padding:.4rem}
+  .note button{margin:.4rem 0 0;padding:.5rem;font-size:1rem}
+ }
 </style></head><body>
 <h1>Laermprotokoll</h1>
 <h2>Letzte 24 Stunden</h2>
@@ -51,15 +63,16 @@ PAGE = """<!doctype html>
 {% else %}
 <p class="empty">Keine Ereignisse in den letzten 24 Stunden</p>
 {% endif %}
-<table><tr><th>Datum</th><th>Uhrzeit</th><th>Dauer</th><th>Pegel</th><th>Anhoeren</th><th>Notiz</th></tr>
+<table><thead><tr><th>Datum</th><th>Uhrzeit</th><th>Dauer</th><th>Pegel</th><th>Anhoeren</th><th>Notiz</th></tr></thead>
+<tbody>
 {% for e in events %}
-<tr><td>{{ e.date }}</td><td>{{ e.time }}</td><td>{{ e.duration }} s</td>
-<td><span class="pegel {{ e.css }}"><span class="bar"><i style="width:{{ e.fill }}%"></i></span><span class="word">{{ e.label }}</span> <span class="dbfs">({{ e.peak }} dB)</span></span></td>
-<td>{% if e.path %}<audio controls preload="none" src="/audio/{{ e.path }}"></audio>
+<tr><td data-label="Datum">{{ e.date }}</td><td data-label="Uhrzeit">{{ e.time }}</td><td data-label="Dauer">{{ e.duration }} s</td>
+<td data-label="Pegel"><span class="pegel {{ e.css }}"><span class="bar"><i style="width:{{ e.fill }}%"></i></span><span class="word">{{ e.label }}</span> <span class="dbfs">({{ e.peak }} dB)</span></span></td>
+<td data-label="Anhoeren">{% if e.path %}<audio controls preload="none" src="/audio/{{ e.path }}"></audio>
 {% else %}Aufnahme fehlgeschlagen{% endif %}</td>
-<td class="note"><form method="post" action="/note"><input type="hidden" name="event" value="{{ e.sort }}"><input type="text" name="note" value="{{ e.note }}" placeholder="Notiz..." maxlength="500"><button type="submit">Speichern</button></form></td></tr>
+<td class="note" data-label="Notiz"><form method="post" action="/note"><input type="hidden" name="event" value="{{ e.sort }}"><input type="text" name="note" value="{{ e.note }}" placeholder="Notiz..." maxlength="500"><button type="submit">Speichern</button></form></td></tr>
 {% endfor %}
-</table></body></html>"""
+</tbody></table></body></html>"""
 
 
 def _load_events(log_path):
