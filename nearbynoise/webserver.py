@@ -8,17 +8,30 @@ from flask import Flask, abort, render_template_string, send_from_directory
 
 DISPLAY_TZ = ZoneInfo("Europe/Berlin")
 
-# Severity thresholds for highlighting loud events (relative dBFS)
-PEAK_HIGH_DBFS = -20.0
-PEAK_MID_DBFS = -35.0
+# Loudness categories (relative dBFS). Upper boundary is inclusive.
+_EXTREME_DBFS = -20.0
+_LOUD_DBFS = -35.0
+_MID_DBFS = -52.0
+
+# Bar fill maps [-70, -10] dBFS onto [0, 100] %.
+_FILL_FLOOR_DBFS = -70.0
+_FILL_CEIL_DBFS = -10.0
 
 
-def _severity(peak_dbfs):
-    if peak_dbfs >= PEAK_HIGH_DBFS:
-        return "peak-high"
-    if peak_dbfs >= PEAK_MID_DBFS:
-        return "peak-mid"
-    return "peak-low"
+def _loudness(peak_dbfs):
+    """Map a relative dBFS peak to a category label, CSS class and bar fill %."""
+    if peak_dbfs >= _EXTREME_DBFS:
+        label, css = "Sehr laut", "lvl-extreme"
+    elif peak_dbfs >= _LOUD_DBFS:
+        label, css = "Laut", "lvl-loud"
+    elif peak_dbfs >= _MID_DBFS:
+        label, css = "Mittel", "lvl-mid"
+    else:
+        label, css = "Leise", "lvl-quiet"
+    span = _FILL_CEIL_DBFS - _FILL_FLOOR_DBFS
+    fill = round((peak_dbfs - _FILL_FLOOR_DBFS) / span * 100)
+    fill = max(0, min(100, fill))
+    return {"label": label, "css": css, "fill": fill}
 
 PAGE = """<!doctype html>
 <html lang="de"><head><meta charset="utf-8">
@@ -29,14 +42,23 @@ PAGE = """<!doctype html>
  table{border-collapse:collapse;width:100%}
  td,th{padding:.5rem;border-bottom:1px solid #ccc;text-align:left}
  audio{width:14rem;max-width:60vw}
- .peak-high{color:#b00020;font-weight:bold}
- .peak-mid{color:#b36b00}
+ .pegel{display:flex;align-items:center;gap:.5rem}
+ .bar{flex:0 0 6rem;height:.7rem;background:#eee;border-radius:.35rem;overflow:hidden}
+ .bar>i{display:block;height:100%}
+ .lvl-quiet .bar>i{background:#2e7d32}
+ .lvl-mid .bar>i{background:#c9a800}
+ .lvl-loud .bar>i{background:#e07000}
+ .lvl-extreme .bar>i{background:#b00020}
+ .word{min-width:5rem}
+ .lvl-loud .word{color:#e07000}
+ .lvl-extreme .word{color:#b00020;font-weight:bold}
+ .dbfs{color:#888;font-size:.85em}
 </style></head><body>
 <h1>Laermprotokoll</h1>
 <table><tr><th>Datum</th><th>Uhrzeit</th><th>Dauer</th><th>Pegel</th><th>Anhoeren</th></tr>
 {% for e in events %}
 <tr><td>{{ e.date }}</td><td>{{ e.time }}</td><td>{{ e.duration }} s</td>
-<td class="{{ e.severity }}">{{ e.peak }} dB</td>
+<td><span class="pegel {{ e.css }}"><span class="bar"><i style="width:{{ e.fill }}%"></i></span><span class="word">{{ e.label }}</span> <span class="dbfs">({{ e.peak }} dB)</span></span></td>
 <td>{% if e.path %}<audio controls preload="none" src="/audio/{{ e.path }}"></audio>
 {% else %}Aufnahme fehlgeschlagen{% endif %}</td></tr>
 {% endfor %}
@@ -55,13 +77,16 @@ def _load_events(log_path):
             # file paths stay in UTC (matches filename and date tree)
             path = f"{start:%Y/%m/%d}/{entry['filename']}"
         start = start.astimezone(DISPLAY_TZ)
+        loud = _loudness(entry["peak_dbfs"])
         events.append({
             "sort": entry["timestamp_start"],
             "date": f"{start:%d.%m.%Y}",
             "time": f"{start:%H:%M:%S}",
             "duration": entry["duration_sec"],
             "peak": entry["peak_dbfs"],
-            "severity": _severity(entry["peak_dbfs"]),
+            "label": loud["label"],
+            "css": loud["css"],
+            "fill": loud["fill"],
             "path": path,
         })
     return sorted(events, key=lambda e: e["sort"], reverse=True)
