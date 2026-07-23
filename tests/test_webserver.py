@@ -41,40 +41,13 @@ def test_audio_route_404_for_missing_file(client):
     assert client.get("/audio/2026/07/22/nope.mp3").status_code == 404
 
 
-def test_loudness_label_by_threshold():
-    from nearbynoise.webserver import _loudness
-    assert _loudness(-15)["label"] == "Sehr laut"
-    assert _loudness(-20)["label"] == "Sehr laut"    # upper boundary inclusive
-    assert _loudness(-25)["label"] == "Laut"
-    assert _loudness(-35)["label"] == "Laut"         # boundary inclusive
-    assert _loudness(-40)["label"] == "Mittel"
-    assert _loudness(-52)["label"] == "Mittel"       # boundary inclusive
-    assert _loudness(-60)["label"] == "Leise"
-
-
-def test_loudness_css_class_by_threshold():
-    from nearbynoise.webserver import _loudness
-    assert _loudness(-15)["css"] == "lvl-extreme"
-    assert _loudness(-25)["css"] == "lvl-loud"
-    assert _loudness(-40)["css"] == "lvl-mid"
-    assert _loudness(-60)["css"] == "lvl-quiet"
-
-
-def test_loudness_fill_clamped_and_linear():
-    from nearbynoise.webserver import _loudness
-    assert _loudness(-10)["fill"] == 100
-    assert _loudness(-5)["fill"] == 100     # clamped above ceiling
-    assert _loudness(-70)["fill"] == 0
-    assert _loudness(-90)["fill"] == 0      # clamped below floor
-    assert _loudness(-40)["fill"] == 50     # (dbfs+70)/60*100
-
-
-def test_pegel_column_shows_bar_word_and_dbfs(client, tmp_path):
+def test_pegel_column_shows_bar_word_and_estimated_dba(client, tmp_path):
+    # (loudness/calibration logic itself is covered in test_loudness.py)
     log = tmp_path / "events.jsonl"
-    quiet = dict(ENTRY, peak_dbfs=-60.0)
-    mid = dict(ENTRY, peak_dbfs=-40.0)
-    loud = dict(ENTRY, peak_dbfs=-28.0)
-    extreme = dict(ENTRY, peak_dbfs=-15.0)
+    quiet = dict(ENTRY, peak_dbfs=-60.0)     # ~43 dB(A) -> Leise
+    mid = dict(ENTRY, peak_dbfs=-45.0)       # ~58 dB(A) -> Mittel
+    loud = dict(ENTRY, peak_dbfs=-30.0)      # ~73 dB(A) -> Laut
+    extreme = dict(ENTRY, peak_dbfs=-13.0)   # ~90 dB(A) -> Sehr laut
     log.write_text("\n".join(json.dumps(e) for e in (quiet, mid, loud, extreme)) + "\n")
     html = client.get("/").get_data(as_text=True)
     assert "Leise" in html
@@ -83,8 +56,8 @@ def test_pegel_column_shows_bar_word_and_dbfs(client, tmp_path):
     assert "Sehr laut" in html
     for css in ("lvl-quiet", "lvl-mid", "lvl-loud", "lvl-extreme"):
         assert css in html
-    assert "width:50%" in html       # bar fill for the -40 dB (Mittel) event
-    assert "-15" in html             # dBFS value still shown
+    assert "~90 dB" in html          # estimated dB(A) shown for the -13 dBFS event
+    assert "-13" not in html         # raw dBFS is no longer displayed
 
 
 def test_overview_charts_rendered_for_recent_events(tmp_path):

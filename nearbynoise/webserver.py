@@ -67,7 +67,7 @@ PAGE = """<!doctype html>
 <tbody>
 {% for e in events %}
 <tr><td data-label="Datum">{{ e.date }}</td><td data-label="Uhrzeit">{{ e.time }}</td><td data-label="Dauer">{{ e.duration }} s</td>
-<td data-label="Pegel"><span class="pegel {{ e.css }}"><span class="bar"><i style="width:{{ e.fill }}%"></i></span><span class="word">{{ e.label }}</span> <span class="dbfs">({{ e.peak }} dB)</span></span></td>
+<td data-label="Pegel"><span class="pegel {{ e.css }}"><span class="bar"><i style="width:{{ e.fill }}%"></i></span><span class="word">{{ e.label }}</span> <span class="dbfs">~{{ e.spl }} dB</span></span></td>
 <td data-label="Anhoeren">{% if e.path %}<audio controls preload="none" src="/audio/{{ e.path }}"></audio>
 {% else %}Aufnahme fehlgeschlagen{% endif %}</td>
 <td class="note" data-label="Notiz"><form method="post" action="/note"><input type="hidden" name="event" value="{{ e.sort }}"><input type="text" name="note" value="{{ e.note }}" placeholder="Notiz..." maxlength="500"><button type="submit">Speichern</button></form></td></tr>
@@ -93,7 +93,8 @@ def _load_events(log_path):
             "date": f"{start:%d.%m.%Y}",
             "time": f"{start:%H:%M:%S}",
             "duration": entry["duration_sec"],
-            "peak": entry["peak_dbfs"],
+            "peak": entry["peak_dbfs"],   # relative dBFS, kept for the charts
+            "spl": loud["spl"],           # estimated dB(A) for display
             "label": loud["label"],
             "css": loud["css"],
             "fill": loud["fill"],
