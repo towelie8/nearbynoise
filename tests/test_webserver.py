@@ -136,6 +136,14 @@ def test_note_text_is_html_escaped(client):
     assert "&lt;script&gt;" in html
 
 
+def test_page_is_responsive(client):
+    html = client.get("/").get_data(as_text=True)
+    assert "<thead>" in html                 # header separated for card layout
+    assert "@media" in html                  # responsive breakpoint present
+    assert 'data-label="Pegel"' in html      # cells labelled for the mobile cards
+    assert 'data-label="Notiz"' in html
+
+
 def test_error_events_shown_without_player(client, tmp_path):
     log = tmp_path / "events.jsonl"
     broken = dict(ENTRY, filename=None)
