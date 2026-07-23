@@ -1,4 +1,6 @@
 import json
+from datetime import datetime, timezone
+
 import pytest
 from nearbynoise.webserver import create_app
 
@@ -83,6 +85,29 @@ def test_pegel_column_shows_bar_word_and_dbfs(client, tmp_path):
         assert css in html
     assert "width:50%" in html       # bar fill for the -40 dB (Mittel) event
     assert "-15" in html             # dBFS value still shown
+
+
+def test_overview_charts_rendered_for_recent_events(tmp_path):
+    day = tmp_path / "2026" / "07" / "22"
+    day.mkdir(parents=True)
+    (day / "20260722T201530.mp3").write_bytes(b"ID3fake")
+    log = tmp_path / "events.jsonl"
+    log.write_text(json.dumps(ENTRY) + "\n")
+    now = datetime(2026, 7, 22, 21, 0, 0, tzinfo=timezone.utc)  # 45 min after event
+    app = create_app(tmp_path, log, now=lambda: now)
+    html = app.test_client().get("/").get_data(as_text=True)
+    assert html.count('class="chart"') == 2      # two SVG charts
+    assert "<circle" in html                      # the recent event as a point
+
+
+def test_overview_empty_state_when_no_recent_events(tmp_path):
+    log = tmp_path / "events.jsonl"
+    log.write_text(json.dumps(ENTRY) + "\n")
+    now = datetime(2026, 8, 1, 0, 0, 0, tzinfo=timezone.utc)   # long after the event
+    app = create_app(tmp_path, log, now=lambda: now)
+    html = app.test_client().get("/").get_data(as_text=True)
+    assert "Keine Ereignisse in den letzten 24 Stunden" in html
+    assert "<circle" not in html
 
 
 def test_error_events_shown_without_player(client, tmp_path):
