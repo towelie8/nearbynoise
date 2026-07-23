@@ -1,9 +1,34 @@
 """Microphone capture. pyaudio is imported lazily so tests run without it."""
+import time
+
 import numpy as np
 
 
 class CaptureError(Exception):
     pass
+
+
+def rate_within_tolerance(effective_rate, expected_rate, tolerance=0.1):
+    """True if the measured rate is within `tolerance` (fraction) of expected."""
+    return abs(effective_rate - expected_rate) <= tolerance * expected_rate
+
+
+def measure_effective_rate(blocks, duration_s=1.0, now=time.time):
+    """Pull blocks for ~duration_s and return the real frames-per-second rate.
+
+    Reveals a device that ignores the configured sample rate (the SC60 accepts
+    44100 Hz but only delivers ~24435 Hz, time-compressing every recording).
+    """
+    start = now()
+    frames = 0
+    for block in blocks:
+        frames += len(block)
+        if now() - start >= duration_s:
+            break
+    elapsed = now() - start
+    if elapsed <= 0:
+        return 0.0
+    return frames / elapsed
 
 
 class AudioCapture:

@@ -7,7 +7,12 @@ from pathlib import Path
 from pydub import AudioSegment
 
 from nearbynoise import config
-from nearbynoise.capture import AudioCapture, CaptureError
+from nearbynoise.capture import (
+    AudioCapture,
+    CaptureError,
+    measure_effective_rate,
+    rate_within_tolerance,
+)
 from nearbynoise.detector import Detector
 from nearbynoise.logger import EventLogger
 from nearbynoise.ringbuffer import RingBuffer
@@ -51,6 +56,11 @@ def run():
                            config.BLOCK_SIZE)
     pending = None
     try:
+        eff_rate = measure_effective_rate(capture.blocks(), duration_s=1.0)
+        if not rate_within_tolerance(eff_rate, config.SAMPLE_RATE):
+            print(f"WARNING: measured capture rate {eff_rate:.0f} Hz deviates "
+                  f"from configured {config.SAMPLE_RATE} Hz; recordings may be "
+                  f"time-distorted", file=sys.stderr)
         for block in capture.blocks():
             now = time.time()
             ring.append(block, now)
