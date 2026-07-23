@@ -39,16 +39,50 @@ def test_audio_route_404_for_missing_file(client):
     assert client.get("/audio/2026/07/22/nope.mp3").status_code == 404
 
 
-def test_peak_levels_get_severity_classes(client, tmp_path):
+def test_loudness_label_by_threshold():
+    from nearbynoise.webserver import _loudness
+    assert _loudness(-15)["label"] == "Sehr laut"
+    assert _loudness(-20)["label"] == "Sehr laut"    # upper boundary inclusive
+    assert _loudness(-25)["label"] == "Laut"
+    assert _loudness(-35)["label"] == "Laut"         # boundary inclusive
+    assert _loudness(-40)["label"] == "Mittel"
+    assert _loudness(-52)["label"] == "Mittel"       # boundary inclusive
+    assert _loudness(-60)["label"] == "Leise"
+
+
+def test_loudness_css_class_by_threshold():
+    from nearbynoise.webserver import _loudness
+    assert _loudness(-15)["css"] == "lvl-extreme"
+    assert _loudness(-25)["css"] == "lvl-loud"
+    assert _loudness(-40)["css"] == "lvl-mid"
+    assert _loudness(-60)["css"] == "lvl-quiet"
+
+
+def test_loudness_fill_clamped_and_linear():
+    from nearbynoise.webserver import _loudness
+    assert _loudness(-10)["fill"] == 100
+    assert _loudness(-5)["fill"] == 100     # clamped above ceiling
+    assert _loudness(-70)["fill"] == 0
+    assert _loudness(-90)["fill"] == 0      # clamped below floor
+    assert _loudness(-40)["fill"] == 50     # (dbfs+70)/60*100
+
+
+def test_pegel_column_shows_bar_word_and_dbfs(client, tmp_path):
     log = tmp_path / "events.jsonl"
-    quiet = dict(ENTRY, peak_dbfs=-50.0)
-    medium = dict(ENTRY, peak_dbfs=-30.0)
-    loud = dict(ENTRY, peak_dbfs=-15.0)
-    log.write_text("\n".join(json.dumps(e) for e in (quiet, medium, loud)) + "\n")
+    quiet = dict(ENTRY, peak_dbfs=-60.0)
+    mid = dict(ENTRY, peak_dbfs=-40.0)
+    loud = dict(ENTRY, peak_dbfs=-28.0)
+    extreme = dict(ENTRY, peak_dbfs=-15.0)
+    log.write_text("\n".join(json.dumps(e) for e in (quiet, mid, loud, extreme)) + "\n")
     html = client.get("/").get_data(as_text=True)
-    assert html.count('class="peak-high"') == 1     # -15 dB: extreme
-    assert html.count('class="peak-mid"') == 1      # -30 dB: elevated
-    assert html.count('class="peak-low"') == 1      # -50 dB: normal
+    assert "Leise" in html
+    assert "Mittel" in html
+    assert "Laut" in html            # standalone label (distinct from "Sehr laut")
+    assert "Sehr laut" in html
+    for css in ("lvl-quiet", "lvl-mid", "lvl-loud", "lvl-extreme"):
+        assert css in html
+    assert "width:50%" in html       # bar fill for the -40 dB (Mittel) event
+    assert "-15" in html             # dBFS value still shown
 
 
 def test_error_events_shown_without_player(client, tmp_path):
