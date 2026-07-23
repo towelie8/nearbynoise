@@ -4,34 +4,14 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from flask import Flask, abort, render_template_string, send_from_directory
+from flask import (Flask, abort, redirect, render_template_string, request,
+                   send_from_directory)
+
+from nearbynoise.charts import bar_chart_svg, hourly_counts, scatter_svg
+from nearbynoise.loudness import loudness as _loudness
+from nearbynoise.notes import load_notes, set_note
 
 DISPLAY_TZ = ZoneInfo("Europe/Berlin")
-
-# Loudness categories (relative dBFS). Upper boundary is inclusive.
-_EXTREME_DBFS = -20.0
-_LOUD_DBFS = -35.0
-_MID_DBFS = -52.0
-
-# Bar fill maps [-70, -10] dBFS onto [0, 100] %.
-_FILL_FLOOR_DBFS = -70.0
-_FILL_CEIL_DBFS = -10.0
-
-
-def _loudness(peak_dbfs):
-    """Map a relative dBFS peak to a category label, CSS class and bar fill %."""
-    if peak_dbfs >= _EXTREME_DBFS:
-        label, css = "Sehr laut", "lvl-extreme"
-    elif peak_dbfs >= _LOUD_DBFS:
-        label, css = "Laut", "lvl-loud"
-    elif peak_dbfs >= _MID_DBFS:
-        label, css = "Mittel", "lvl-mid"
-    else:
-        label, css = "Leise", "lvl-quiet"
-    span = _FILL_CEIL_DBFS - _FILL_FLOOR_DBFS
-    fill = round((peak_dbfs - _FILL_FLOOR_DBFS) / span * 100)
-    fill = max(0, min(100, fill))
-    return {"label": label, "css": css, "fill": fill}
 
 PAGE = """<!doctype html>
 <html lang="de"><head><meta charset="utf-8">
@@ -42,6 +22,11 @@ PAGE = """<!doctype html>
  table{border-collapse:collapse;width:100%}
  td,th{padding:.5rem;border-bottom:1px solid #ccc;text-align:left}
  audio{width:14rem;max-width:60vw}
+ .charts{display:flex;flex-wrap:wrap;gap:1rem;margin-bottom:1rem}
+ figure{margin:0;flex:1 1 20rem}
+ figcaption{font-size:.9rem;color:#444;margin-bottom:.25rem}
+ .chart{width:100%;height:auto;border:1px solid #eee;border-radius:.35rem}
+ .empty{color:#666}
  .pegel{display:flex;align-items:center;gap:.5rem}
  .bar{flex:0 0 6rem;height:.7rem;background:#eee;border-radius:.35rem;overflow:hidden}
  .bar>i{display:block;height:100%}
@@ -53,14 +38,26 @@ PAGE = """<!doctype html>
  .lvl-loud .word{color:#e07000}
  .lvl-extreme .word{color:#b00020;font-weight:bold}
  .dbfs{color:#888;font-size:.85em}
+ .note input[type=text]{width:11rem;max-width:40vw}
+ .note button{margin-left:.25rem}
 </style></head><body>
 <h1>Laermprotokoll</h1>
-<table><tr><th>Datum</th><th>Uhrzeit</th><th>Dauer</th><th>Pegel</th><th>Anhoeren</th></tr>
+<h2>Letzte 24 Stunden</h2>
+{% if has_recent %}
+<div class="charts">
+<figure><figcaption>Ereignisse pro Stunde</figcaption>{{ bar_svg|safe }}</figure>
+<figure><figcaption>Lautheit ueber die Zeit</figcaption>{{ scatter_svg|safe }}</figure>
+</div>
+{% else %}
+<p class="empty">Keine Ereignisse in den letzten 24 Stunden</p>
+{% endif %}
+<table><tr><th>Datum</th><th>Uhrzeit</th><th>Dauer</th><th>Pegel</th><th>Anhoeren</th><th>Notiz</th></tr>
 {% for e in events %}
 <tr><td>{{ e.date }}</td><td>{{ e.time }}</td><td>{{ e.duration }} s</td>
 <td><span class="pegel {{ e.css }}"><span class="bar"><i style="width:{{ e.fill }}%"></i></span><span class="word">{{ e.label }}</span> <span class="dbfs">({{ e.peak }} dB)</span></span></td>
 <td>{% if e.path %}<audio controls preload="none" src="/audio/{{ e.path }}"></audio>
-{% else %}Aufnahme fehlgeschlagen{% endif %}</td></tr>
+{% else %}Aufnahme fehlgeschlagen{% endif %}</td>
+<td class="note"><form method="post" action="/note"><input type="hidden" name="event" value="{{ e.sort }}"><input type="text" name="note" value="{{ e.note }}" placeholder="Notiz..." maxlength="500"><button type="submit">Speichern</button></form></td></tr>
 {% endfor %}
 </table></body></html>"""
 
@@ -92,14 +89,35 @@ def _load_events(log_path):
     return sorted(events, key=lambda e: e["sort"], reverse=True)
 
 
-def create_app(events_dir, log_path):
+def create_app(events_dir, log_path, now=None, notes_path=None):
     events_dir = Path(events_dir)
     log_path = Path(log_path)
+    notes_path = Path(notes_path) if notes_path else events_dir / "notes.json"
+    now_provider = now or (lambda: datetime.now(DISPLAY_TZ))
     app = Flask(__name__)
 
     @app.get("/")
     def index():
-        return render_template_string(PAGE, events=_load_events(log_path))
+        events = _load_events(log_path)
+        notes = load_notes(notes_path)
+        for e in events:
+            e["note"] = notes.get(e["sort"], "")
+        current = now_provider()
+        points = [(datetime.fromisoformat(e["sort"]).astimezone(DISPLAY_TZ),
+                   e["peak"]) for e in events]
+        counts = hourly_counts([t for t, _ in points], current)
+        return render_template_string(
+            PAGE, events=events,
+            bar_svg=bar_chart_svg(counts, current),
+            scatter_svg=scatter_svg(points, current),
+            has_recent=sum(counts) > 0)
+
+    @app.post("/note")
+    def save_note():
+        event = request.form.get("event", "")
+        if event:
+            set_note(notes_path, event, request.form.get("note", ""))
+        return redirect("/")
 
     @app.get("/audio/<yyyy>/<mm>/<dd>/<filename>")
     def audio(yyyy, mm, dd, filename):
