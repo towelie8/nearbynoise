@@ -46,6 +46,15 @@ sudo mkdir -p /var/www/laermprotokoll
 sudo chown user: /var/www/laermprotokoll
 ```
 
+Notes store, owned by the web service user (`www-data`). It must live OUTSIDE
+`/var/www/laermprotokoll`: the Pi's `rsync -a` resets that dir's owner/perms on
+every upload, so the web app could not write notes there.
+
+```bash
+sudo mkdir -p /var/lib/nearbynoise
+sudo chown www-data:www-data /var/lib/nearbynoise
+```
+
 Web app:
 
 ```bash
@@ -55,7 +64,7 @@ sudo git clone <repo-url> nearbynoise
 cd nearbynoise
 sudo python3 -m venv .venv
 sudo .venv/bin/pip install numpy flask waitress   # webserver needs no audio deps
-sudo cp deploy/nearbynoise-web.service /etc/systemd/system/
+sudo cp deploy/nearbynoise-web.service /etc/systemd/system/   # writes notes to /var/lib/nearbynoise
 sudo systemctl daemon-reload
 sudo systemctl enable --now nearbynoise-web
 curl -s http://127.0.0.1:8080/ | head   # sanity check
